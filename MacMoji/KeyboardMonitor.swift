@@ -88,8 +88,8 @@ class KeyboardMonitor {
             self.onTrackingCancelled?()
         }
 
-        // Perform the replacement after a tiny delay to let the event tap settle
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+        // Perform the replacement on a background thread to avoid blocking the main thread
+        DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + 0.05) {
             self.replaceText(deleteCount: deleteCount, replacement: emoji)
         }
     }
@@ -115,8 +115,8 @@ class KeyboardMonitor {
             return Unmanaged.passRetained(event)
         }
 
-        // Handle special keys when autocomplete popup is showing
-        if isTracking && !buffer.isEmpty {
+        // Handle special keys when tracking is active
+        if isTracking {
             let popup = AutocompleteWindowController.shared
 
             switch Int(keyCode) {
@@ -168,14 +168,10 @@ class KeyboardMonitor {
             default:
                 break
             }
-        } else if Int(keyCode) == kVK_Delete && isTracking && buffer.isEmpty {
-            // Backspace when we only have the `:` tracked
-            cancelTracking()
-            return Unmanaged.passRetained(event)
         }
 
         // Get the character typed
-        if let characters = event.copy()?.keyboardString(), !characters.isEmpty {
+        if let characters = event.keyboardString(), !characters.isEmpty {
             let char = characters
 
             if char == ":" {
@@ -191,7 +187,7 @@ class KeyboardMonitor {
                             self.onTrackingCancelled?()
                         }
                         // Let the closing `:` pass through, then delete everything and insert emoji
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                        DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + 0.05) {
                             self.replaceText(deleteCount: deleteCount + 1, replacement: emoji) // +1 for closing `:`
                         }
                         return Unmanaged.passRetained(event)

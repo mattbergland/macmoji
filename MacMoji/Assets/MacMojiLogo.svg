@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 260 150" width="260" height="150">
+  <!-- M letter - bold rounded -->
+  <path d="M8,100 L8,22 C8,20 9,18 12,18 L22,18 C24,18 26,19 27,22 L48,60 L69,22 C70,19 72,18 74,18 L84,18 C87,18 88,20 88,22 L88,100 C88,103 86,105 83,105 L75,105 C72,105 70,103 70,100 L70,55 L53,84 C52,86 50,87 48,87 C46,87 44,86 43,84 L26,55 L26,100 C26,103 24,105 21,105 L13,105 C10,105 8,103 8,100 Z" fill="black"/>
+  
+  <!-- o letter - circle with eye dot -->
+  <path d="M120,35 C103,35 95,46 95,62 C95,78 103,90 120,90 C137,90 145,78 145,62 C145,46 137,35 120,35 Z M120,50 C128,50 131,55 131,62 C131,69 128,75 120,75 C112,75 109,69 109,62 C109,55 112,50 120,50 Z" fill="black" fill-rule="evenodd"/>
+  <!-- eye dot inside o -->
+  <circle cx="122" cy="58" r="5.5" fill="black"/>
+  
+  <!-- j letter stem -->
+  <path d="M165,42 L178,42 L178,88 C178,100 172,108 160,108 L155,108 C152,108 150,106 150,103 L150,98 C150,95 152,93 155,93 L158,93 C162,93 165,91 165,86 Z" fill="black"/>
+  <!-- j dot -->
+  <circle cx="171.5" cy="28" r="8.5" fill="black"/>
+  
+  <!-- i letter stem -->
+  <path d="M192,42 L205,42 L205,100 C205,103 203,105 200,105 L197,105 C194,105 192,103 192,100 Z" fill="black"/>
+  <!-- i dot -->
+  <circle cx="198.5" cy="28" r="8.5" fill="black"/>
+  
+  <!-- smile curve - big sweeping curve from under o to past i -->
+  <path d="M92,82 C100,120 180,125 198,90" stroke="black" stroke-width="12" fill="none" stroke-linecap="round"/>
+</svg>
