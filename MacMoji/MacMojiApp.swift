@@ -39,7 +39,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func startMonitorWithRetry(monitor: KeyboardMonitor, attempt: Int) {
         let maxAttempts = 60 // Try for up to 60 seconds
-        let delay: TimeInterval = attempt == 0 ? 1.0 : 1.0
+        let delay: TimeInterval = attempt == 0 ? 0.1 : 1.0
 
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
             let trusted = AXIsProcessTrusted()
