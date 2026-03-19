@@ -1,35 +1,32 @@
 import SwiftUI
 
+struct EmojiItem: Identifiable {
+    let id: String
+    let emoji: String
+
+    init(shortcode: String, emoji: String) {
+        self.id = shortcode
+        self.emoji = emoji
+    }
+
+    var shortcode: String { id }
+}
+
 struct ContentView: View {
     @State private var searchText = ""
     @State private var copiedShortcode: String?
+    @State private var displayedEmojis: [EmojiItem] = []
 
-    private var filteredEmojis: [(shortcode: String, emoji: String)] {
-        let query = searchText
-            .lowercased()
-            .replacingOccurrences(of: ":", with: "")
-            .trimmingCharacters(in: .whitespaces)
-
-        if query.isEmpty {
-            return EmojiDatabase.popular.compactMap { code in
-                guard let emoji = EmojiDatabase.all[code] else { return nil }
-                return (code, emoji)
-            }
+    private static let popularItems: [EmojiItem] = {
+        EmojiDatabase.popular.compactMap { code in
+            guard let emoji = EmojiDatabase.all[code] else { return nil }
+            return EmojiItem(shortcode: code, emoji: emoji)
         }
+    }()
 
-        return EmojiDatabase.all
-            .filter { $0.key.contains(query) }
-            .sorted { a, b in
-                let aPrefix = a.key.hasPrefix(query)
-                let bPrefix = b.key.hasPrefix(query)
-                if aPrefix != bPrefix { return aPrefix }
-                let aExact = a.key == query
-                let bExact = b.key == query
-                if aExact != bExact { return aExact }
-                return a.key < b.key
-            }
-            .map { ($0.key, $0.value) }
-    }
+    private static let allSorted: [(key: String, value: String)] = {
+        EmojiDatabase.all.sorted { $0.key < $1.key }
+    }()
 
     var body: some View {
         VStack(spacing: 0) {
@@ -40,6 +37,43 @@ struct ContentView: View {
             footer
         }
         .frame(width: 340, height: 420)
+        .onAppear {
+            displayedEmojis = Self.popularItems
+        }
+        .onChange(of: searchText) { newValue in
+            updateResults(query: newValue)
+        }
+    }
+
+    private func updateResults(query: String) {
+        let cleaned = query
+            .lowercased()
+            .replacingOccurrences(of: ":", with: "")
+            .trimmingCharacters(in: .whitespaces)
+
+        if cleaned.isEmpty {
+            displayedEmojis = Self.popularItems
+            return
+        }
+
+        var exactMatches: [EmojiItem] = []
+        var prefixMatches: [EmojiItem] = []
+        var containsMatches: [EmojiItem] = []
+
+        for entry in Self.allSorted {
+            if entry.key == cleaned {
+                exactMatches.append(EmojiItem(shortcode: entry.key, emoji: entry.value))
+            } else if entry.key.hasPrefix(cleaned) {
+                prefixMatches.append(EmojiItem(shortcode: entry.key, emoji: entry.value))
+            } else if entry.key.contains(cleaned) {
+                containsMatches.append(EmojiItem(shortcode: entry.key, emoji: entry.value))
+            }
+        }
+
+        var results = exactMatches
+        results.append(contentsOf: prefixMatches)
+        results.append(contentsOf: containsMatches)
+        displayedEmojis = Array(results.prefix(120))
     }
 
     // MARK: - Search Bar
@@ -69,7 +103,7 @@ struct ContentView: View {
 
     private var emojiGrid: some View {
         Group {
-            if filteredEmojis.isEmpty {
+            if displayedEmojis.isEmpty {
                 emptyState
             } else {
                 ScrollView {
@@ -77,8 +111,8 @@ struct ContentView: View {
                         columns: Array(repeating: GridItem(.flexible(), spacing: 4), count: 6),
                         spacing: 4
                     ) {
-                        ForEach(filteredEmojis.prefix(150), id: \.shortcode) { item in
-                            emojiButton(shortcode: item.shortcode, emoji: item.emoji)
+                        ForEach(displayedEmojis) { item in
+                            emojiButton(item: item)
                         }
                     }
                     .padding(8)
@@ -100,26 +134,23 @@ struct ContentView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private func emojiButton(shortcode: String, emoji: String) -> some View {
-        let isCopied = copiedShortcode == shortcode
+    private func emojiButton(item: EmojiItem) -> some View {
+        let isCopied = copiedShortcode == item.shortcode
 
         return Button(action: {
-            copyToClipboard(emoji)
-            withAnimation(.easeInOut(duration: 0.2)) {
-                copiedShortcode = shortcode
-            }
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(item.emoji, forType: .string)
+            copiedShortcode = item.shortcode
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                withAnimation {
-                    if copiedShortcode == shortcode {
-                        copiedShortcode = nil
-                    }
+                if copiedShortcode == item.shortcode {
+                    copiedShortcode = nil
                 }
             }
         }) {
             VStack(spacing: 2) {
-                Text(emoji)
+                Text(item.emoji)
                     .font(.system(size: 26))
-                Text(isCopied ? "Copied!" : ":\(shortcode):")
+                Text(isCopied ? "Copied!" : ":\(item.shortcode):")
                     .font(.system(size: 7))
                     .foregroundColor(isCopied ? .green : .secondary)
                     .lineLimit(1)
@@ -132,14 +163,13 @@ struct ContentView: View {
             )
         }
         .buttonStyle(.plain)
-        .help(":\(shortcode):")
     }
 
     // MARK: - Footer
 
     private var footer: some View {
         HStack {
-            Text("\(filteredEmojis.count) emojis")
+            Text("\(displayedEmojis.count) emojis")
                 .font(.caption)
                 .foregroundColor(.secondary)
             Spacer()
@@ -152,12 +182,5 @@ struct ContentView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
-    }
-
-    // MARK: - Helpers
-
-    private func copyToClipboard(_ text: String) {
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(text, forType: .string)
     }
 }
