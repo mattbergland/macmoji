@@ -162,9 +162,7 @@ class AutocompleteWindowController {
         var focusedElement: AnyObject?
         let focusResult = AXUIElementCopyAttributeValue(systemElement, kAXFocusedUIElementAttribute as CFString, &focusedElement)
 
-        if focusResult == .success, let focused = focusedElement {
-            guard let axElement = focused as? AXUIElement else { return }
-
+        if focusResult == .success, let focused = focusedElement, let axElement = focused as? AXUIElement {
             // Get the selected text range
             var selectedRangeValue: AnyObject?
             let rangeResult = AXUIElementCopyAttributeValue(axElement, kAXSelectedTextRangeAttribute as CFString, &selectedRangeValue)
@@ -179,9 +177,10 @@ class AutocompleteWindowController {
                     &boundsValue
                 )
 
-                if boundsResult == .success, let bounds = boundsValue {
+                if boundsResult == .success, let bounds = boundsValue,
+                   let axValue = bounds as? AXValue {
                     var rect = CGRect.zero
-                    if let axValue = bounds as? AXValue, AXValueGetValue(axValue, .cgRect, &rect) {
+                    if AXValueGetValue(axValue, .cgRect, &rect) {
                         // Convert from screen coordinates (top-left origin) to Cocoa coordinates (bottom-left origin)
                         if let screen = NSScreen.main {
                             let screenHeight = screen.frame.height
