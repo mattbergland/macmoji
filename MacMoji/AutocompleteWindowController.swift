@@ -154,20 +154,59 @@ class AutocompleteWindowController {
     private func positionWindow() {
         guard let window = window else { return }
 
-        // Position near the mouse cursor as a reasonable approximation
-        // of where the user is typing
-        let mouseLocation = NSEvent.mouseLocation
         let screenFrame = NSScreen.main?.visibleFrame ?? NSRect.zero
+        var cursorPoint: NSPoint? = nil
 
-        var x = mouseLocation.x + 10
-        var y = mouseLocation.y - window.frame.height - 10
+        // Try to get the actual text cursor position using Accessibility API
+        let systemElement = AXUIElementCreateSystemWide()
+        var focusedElement: AnyObject?
+        let focusResult = AXUIElementCopyAttributeValue(systemElement, kAXFocusedUIElementAttribute as CFString, &focusedElement)
+
+        if focusResult == .success, let focused = focusedElement {
+            let axElement = focused as! AXUIElement
+
+            // Get the selected text range
+            var selectedRangeValue: AnyObject?
+            let rangeResult = AXUIElementCopyAttributeValue(axElement, kAXSelectedTextRangeAttribute as CFString, &selectedRangeValue)
+
+            if rangeResult == .success, let rangeValue = selectedRangeValue {
+                // Get the bounds for the selected text range (this gives us the cursor position)
+                var boundsValue: AnyObject?
+                let boundsResult = AXUIElementCopyParameterizedAttributeValue(
+                    axElement,
+                    kAXBoundsForRangeParameterizedAttribute as CFString,
+                    rangeValue,
+                    &boundsValue
+                )
+
+                if boundsResult == .success, let bounds = boundsValue {
+                    var rect = CGRect.zero
+                    if AXValueGetValue(bounds as! AXValue, .cgRect, &rect) {
+                        // Convert from screen coordinates (top-left origin) to Cocoa coordinates (bottom-left origin)
+                        if let screen = NSScreen.main {
+                            let screenHeight = screen.frame.height
+                            cursorPoint = NSPoint(
+                                x: rect.origin.x,
+                                y: screenHeight - rect.origin.y - rect.size.height
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // Fall back to mouse location if we couldn't get the cursor position
+        let referencePoint = cursorPoint ?? NSEvent.mouseLocation
+
+        var x = referencePoint.x
+        var y = referencePoint.y - window.frame.height - 4
 
         // Keep on screen
         if x + window.frame.width > screenFrame.maxX {
             x = screenFrame.maxX - window.frame.width
         }
         if y < screenFrame.minY {
-            y = mouseLocation.y + 20
+            y = referencePoint.y + 20
         }
         if x < screenFrame.minX {
             x = screenFrame.minX
