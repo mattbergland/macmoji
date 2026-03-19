@@ -1,186 +1,127 @@
 import SwiftUI
 
-struct EmojiItem: Identifiable {
-    let id: String
-    let emoji: String
-
-    init(shortcode: String, emoji: String) {
-        self.id = shortcode
-        self.emoji = emoji
-    }
-
-    var shortcode: String { id }
-}
-
 struct ContentView: View {
-    @State private var searchText = ""
-    @State private var copiedShortcode: String?
-    @State private var displayedEmojis: [EmojiItem] = []
-
-    private static let popularItems: [EmojiItem] = {
-        EmojiDatabase.popular.compactMap { code in
-            guard let emoji = EmojiDatabase.all[code] else { return nil }
-            return EmojiItem(shortcode: code, emoji: emoji)
-        }
-    }()
-
-    private static let allSorted: [(key: String, value: String)] = {
-        EmojiDatabase.all.sorted { $0.key < $1.key }
-    }()
+    @State private var hasAccessibility = AXIsProcessTrusted()
 
     var body: some View {
-        VStack(spacing: 0) {
-            searchBar
-            Divider()
-            emojiGrid
-            Divider()
-            footer
-        }
-        .frame(width: 340, height: 420)
-        .onAppear {
-            displayedEmojis = Self.popularItems
-        }
-        .onChange(of: searchText) { newValue in
-            updateResults(query: newValue)
-        }
-    }
-
-    private func updateResults(query: String) {
-        let cleaned = query
-            .lowercased()
-            .replacingOccurrences(of: ":", with: "")
-            .trimmingCharacters(in: .whitespaces)
-
-        if cleaned.isEmpty {
-            displayedEmojis = Self.popularItems
-            return
-        }
-
-        var exactMatches: [EmojiItem] = []
-        var prefixMatches: [EmojiItem] = []
-        var containsMatches: [EmojiItem] = []
-
-        for entry in Self.allSorted {
-            if entry.key == cleaned {
-                exactMatches.append(EmojiItem(shortcode: entry.key, emoji: entry.value))
-            } else if entry.key.hasPrefix(cleaned) {
-                prefixMatches.append(EmojiItem(shortcode: entry.key, emoji: entry.value))
-            } else if entry.key.contains(cleaned) {
-                containsMatches.append(EmojiItem(shortcode: entry.key, emoji: entry.value))
+        VStack(spacing: 12) {
+            // Header
+            HStack {
+                Text("MacMoji")
+                    .font(.headline)
+                Spacer()
+                Circle()
+                    .fill(hasAccessibility ? Color.green : Color.red)
+                    .frame(width: 8, height: 8)
+                Text(hasAccessibility ? "Active" : "Needs Permission")
+                    .font(.caption)
+                    .foregroundColor(hasAccessibility ? .green : .red)
             }
-        }
+            .padding(.horizontal, 16)
+            .padding(.top, 12)
 
-        var results = exactMatches
-        results.append(contentsOf: prefixMatches)
-        results.append(contentsOf: containsMatches)
-        displayedEmojis = Array(results.prefix(120))
-    }
+            Divider()
 
-    // MARK: - Search Bar
-
-    private var searchBar: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "magnifyingglass")
-                .foregroundColor(.secondary)
-                .font(.system(size: 14))
-
-            TextField("Type a shortcode... (fire, eyes, joy)", text: $searchText)
-                .textFieldStyle(.plain)
-                .font(.system(size: 14))
-
-            if !searchText.isEmpty {
-                Button(action: { searchText = "" }) {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundColor(.secondary)
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .padding(12)
-    }
-
-    // MARK: - Emoji Grid
-
-    private var emojiGrid: some View {
-        Group {
-            if displayedEmojis.isEmpty {
-                emptyState
+            if hasAccessibility {
+                activeView
             } else {
-                ScrollView {
-                    LazyVGrid(
-                        columns: Array(repeating: GridItem(.flexible(), spacing: 4), count: 6),
-                        spacing: 4
-                    ) {
-                        ForEach(displayedEmojis) { item in
-                            emojiButton(item: item)
-                        }
-                    }
-                    .padding(8)
-                }
+                permissionView
             }
+
+            Divider()
+
+            // Footer
+            HStack {
+                Text("\(EmojiDatabase.all.count) emojis")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                Spacer()
+                Button("Quit") {
+                    NSApplication.shared.terminate(nil)
+                }
+                .font(.caption)
+                .buttonStyle(.plain)
+                .foregroundColor(.secondary)
+            }
+            .padding(.horizontal, 16)
+            .padding(.bottom, 8)
         }
-        .frame(maxHeight: .infinity)
+        .frame(width: 300, height: 280)
+        .onAppear {
+            hasAccessibility = AXIsProcessTrusted()
+        }
     }
 
-    private var emptyState: some View {
-        VStack(spacing: 8) {
-            Text("No emojis found")
+    private var activeView: some View {
+        VStack(spacing: 10) {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 36))
+                .foregroundColor(.green)
+
+            Text("MacMoji is running!")
                 .font(.headline)
-                .foregroundColor(.secondary)
-            Text("Try a different shortcode")
-                .font(.caption)
-                .foregroundColor(.secondary.opacity(0.7))
+
+            VStack(alignment: .leading, spacing: 6) {
+                instructionRow(icon: "keyboard", text: "Type :shortcode: anywhere to insert emoji")
+                instructionRow(icon: "text.cursor", text: "Type : to see autocomplete suggestions")
+                instructionRow(icon: "return", text: "Press Tab or Enter to select")
+                instructionRow(icon: "escape", text: "Press Esc to dismiss")
+            }
+            .padding(.horizontal, 8)
+
+            Spacer()
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(.top, 8)
     }
 
-    private func emojiButton(item: EmojiItem) -> some View {
-        let isCopied = copiedShortcode == item.shortcode
+    private var permissionView: some View {
+        VStack(spacing: 10) {
+            Image(systemName: "lock.shield")
+                .font(.system(size: 36))
+                .foregroundColor(.orange)
 
-        return Button(action: {
-            NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(item.emoji, forType: .string)
-            copiedShortcode = item.shortcode
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                if copiedShortcode == item.shortcode {
-                    copiedShortcode = nil
+            Text("Accessibility Permission Required")
+                .font(.headline)
+                .multilineTextAlignment(.center)
+
+            Text("MacMoji needs Accessibility access to detect your typing and insert emojis.")
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 8)
+
+            Button("Open System Settings") {
+                if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
+                    NSWorkspace.shared.open(url)
                 }
             }
-        }) {
-            VStack(spacing: 2) {
-                Text(item.emoji)
-                    .font(.system(size: 26))
-                Text(isCopied ? "Copied!" : ":\(item.shortcode):")
-                    .font(.system(size: 7))
-                    .foregroundColor(isCopied ? .green : .secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-            }
-            .frame(width: 50, height: 50)
-            .background(
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(isCopied ? Color.green.opacity(0.15) : Color.clear)
-            )
-        }
-        .buttonStyle(.plain)
-    }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.small)
 
-    // MARK: - Footer
-
-    private var footer: some View {
-        HStack {
-            Text("\(displayedEmojis.count) emojis")
-                .font(.caption)
-                .foregroundColor(.secondary)
-            Spacer()
-            Button("Quit") {
-                NSApplication.shared.terminate(nil)
+            Button("Check Again") {
+                hasAccessibility = AXIsProcessTrusted()
+                if hasAccessibility {
+                    KeyboardMonitor.shared.start()
+                }
             }
             .font(.caption)
             .buttonStyle(.plain)
-            .foregroundColor(.secondary)
+            .foregroundColor(.accentColor)
+
+            Spacer()
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
+        .padding(.top, 8)
+    }
+
+    private func instructionRow(icon: String, text: String) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: icon)
+                .font(.system(size: 11))
+                .foregroundColor(.accentColor)
+                .frame(width: 16)
+            Text(text)
+                .font(.system(size: 11))
+                .foregroundColor(.secondary)
+        }
     }
 }
