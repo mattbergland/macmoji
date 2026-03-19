@@ -1,31 +1,38 @@
 # MacMoji
 
-A tiny Mac menu bar app that lets you type Slack-style emoji shortcodes (like `:fire:` or `:eyes:`) and copy the real emoji to your clipboard. Paste it into iMessage, email, notes, or anywhere else.
+Type Slack-style emoji shortcodes anywhere on your Mac and they instantly become real emojis. Works in iMessage, email, Slack, Notes, browsers -- everywhere you type.
 
 ---
 
 ## What It Does
 
-- Lives in your **menu bar** (top-right of your screen, near the clock)
-- Click the smiley face icon to open it
-- Type a shortcode like `fire`, `eyes`, `joy`, `thumbsup`, etc.
-- Click an emoji to **copy it to your clipboard**
-- Paste it anywhere with **Cmd + V**
+MacMoji runs in the background and watches for Slack-style shortcodes as you type:
+
+- **Auto-replace**: Type `:fire:` and it instantly becomes the fire emoji
+- **Autocomplete**: Type `:fi` and a popup appears with matching emojis -- press **Tab** or **Enter** to insert one
+- **Works everywhere**: Any text field on your Mac -- iMessage, email, browsers, Notes, etc.
+- Lives in your **menu bar** as a smiley face icon
+
+### How It Works
+
+1. Start typing a colon `:` anywhere on your Mac
+2. As you type letters after the colon, a small popup appears with matching emoji suggestions
+3. Pick an emoji by:
+   - Pressing **Tab** or **Enter** to insert the highlighted emoji
+   - Using **arrow keys** to navigate the suggestions
+   - Finishing the shortcode with a closing colon (e.g., `:fire:`) to auto-replace
+4. Press **Escape** to dismiss the popup
 
 ### Examples
 
-| You type   | You get |
-|------------|---------|
-| `fire`     | `fire emoji`    |
-| `eyes`     | `eyes emoji`    |
-| `joy`      | `joy emoji`     |
-| `heart`    | `heart emoji`   |
-| `thumbsup` | `thumbsup emoji`|
-| `100`      | `100 emoji`     |
-| `rocket`   | `rocket emoji`  |
-| `sparkles` | `sparkles emoji`|
-| `tada`     | `tada emoji`    |
-| `skull`    | `skull emoji`   |
+| You type     | You get |
+|--------------|---------|
+| `:fire:`     | fire emoji (auto-replaced)  |
+| `:eyes:`     | eyes emoji (auto-replaced)  |
+| `:jo` + Tab  | joy emoji (autocomplete)    |
+| `:heart:`    | heart emoji (auto-replaced) |
+| `:th` + Tab  | thumbsup emoji (autocomplete) |
+| `:rocket:`   | rocket emoji (auto-replaced) |
 
 Includes **400+ emoji shortcodes** from Slack, covering smileys, hand gestures, hearts, animals, food, objects, flags, and more.
 
@@ -65,15 +72,22 @@ Includes **400+ emoji shortcodes** from Slack, covering smileys, hand gestures, 
    - Click the **Play button** (triangle icon, top-left) or press **Cmd + R**
    - The first build may take a moment
 
-6. **Find MacMoji in your menu bar**
+6. **Grant Accessibility Permission** (first time only)
+   - A system popup will ask you to grant MacMoji Accessibility access
+   - Click **"Open System Settings"** (or go to System Settings > Privacy & Security > Accessibility)
+   - Find **MacMoji** in the list and **toggle it ON**
+   - You may need to click the lock icon and enter your password first
+   - Go back to MacMoji's menu bar icon and click **"Check Again"** to confirm
+
+7. **Find MacMoji in your menu bar**
    - Look at the **top-right of your screen** (near the clock, Wi-Fi, battery icons)
    - You'll see a new **smiley face icon** -- that's MacMoji!
-   - Click it to open the emoji picker
+   - Click it to see the status and usage instructions
 
-7. **Use it!**
-   - Type a shortcode in the search box (e.g., `fire`)
-   - Click any emoji to copy it to your clipboard
-   - Switch to iMessage (or any app) and press **Cmd + V** to paste
+8. **Start typing emojis!**
+   - Open any app (iMessage, Notes, a browser, etc.)
+   - Type `:fire:` -- it will be replaced with the fire emoji
+   - Or type `:fi` and pick from the autocomplete popup
 
 ### How to Make It Open Automatically When You Start Your Mac
 
@@ -99,6 +113,12 @@ Click the MacMoji icon in the menu bar, then click **"Quit"** at the bottom of t
 - Make sure you clicked the Play button in Xcode and the build succeeded (no red errors)
 - Look carefully at the right side of your menu bar -- the smiley face icon might be hidden behind the notch on newer MacBooks. Try expanding your menu bar by holding **Cmd** and dragging icons around
 
+### Emojis are not being replaced / no popup appears
+- Click the MacMoji smiley face in the menu bar -- check if the status shows "Active" with a green dot
+- If it says "Needs Permission", click **"Open System Settings"** and enable Accessibility for MacMoji
+- After enabling, click **"Check Again"** in the MacMoji popup
+- You may need to quit and restart MacMoji after granting permissions
+
 ### Xcode says something about "signing" or "team"
 - In Xcode, click on **"MacMoji"** in the left sidebar (the blue project icon at the very top)
 - Click the **"Signing & Capabilities"** tab
@@ -113,3 +133,4 @@ Click the MacMoji icon in the menu bar, then click **"Quit"** at the bottom of t
 
 - macOS 13.0 (Ventura) or later
 - Xcode 15.0 or later
+- Accessibility permission (prompted on first launch)
