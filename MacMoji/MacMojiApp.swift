@@ -61,7 +61,7 @@ struct MacMojiApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
 
     var body: some Scene {
-        MenuBarExtra("MacMoji", systemImage: "face.smiling") {
+        MenuBarExtra("MacMoji", image: "MenuBarIcon") {
             ContentView()
         }
         .menuBarExtraStyle(.window)
