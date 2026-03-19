@@ -46,10 +46,8 @@ class AutocompleteWindowController {
             guard let self = self, let window = self.window, window.isVisible else { return }
             // Hide the popup when clicking outside it, but don't cancel tracking
             // so the popup reappears when the user types the next letter
-            let clickLocation = event.locationInWindow
-            let windowFrame = window.frame
             let screenPoint = NSEvent.mouseLocation
-            if !windowFrame.contains(screenPoint) {
+            if !window.frame.contains(screenPoint) {
                 self.hide()
             }
         }
@@ -95,12 +93,6 @@ class AutocompleteWindowController {
         }
 
         show()
-    }
-
-    func showIfHasSuggestions() {
-        if !suggestions.isEmpty {
-            show()
-        }
     }
 
     func moveSelectionUp() {
