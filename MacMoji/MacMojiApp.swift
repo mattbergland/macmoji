@@ -33,9 +33,25 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             // Could show a brief notification here if desired
         }
 
-        // Delay start slightly to ensure accessibility permissions are processed
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-            monitor.start()
+        // Retry starting the monitor periodically until accessibility is granted
+        startMonitorWithRetry(monitor: monitor, attempt: 0)
+    }
+
+    private func startMonitorWithRetry(monitor: KeyboardMonitor, attempt: Int) {
+        let maxAttempts = 60 // Try for up to 60 seconds
+        let delay: TimeInterval = attempt == 0 ? 1.0 : 1.0
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+            let trusted = AXIsProcessTrusted()
+            if trusted {
+                monitor.start()
+                print("MacMoji: Monitor started successfully on attempt \(attempt + 1)")
+            } else if attempt < maxAttempts {
+                print("MacMoji: Waiting for Accessibility permission... (attempt \(attempt + 1))")
+                self.startMonitorWithRetry(monitor: monitor, attempt: attempt + 1)
+            } else {
+                print("MacMoji: Timed out waiting for Accessibility permission.")
+            }
         }
     }
 }

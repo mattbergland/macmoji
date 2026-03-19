@@ -175,7 +175,7 @@ class KeyboardMonitor {
         }
 
         // Get the character typed
-        if let characters = event.copy()?.keyboardString(), !characters.isEmpty {
+        if let characters = event.keyboardString(), !characters.isEmpty {
             let char = characters
 
             if char == ":" {
