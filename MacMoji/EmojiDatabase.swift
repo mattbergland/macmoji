@@ -635,7 +635,7 @@ enum EmojiDatabase {
         "umbrella_with_rain_drops": "\u{2614}",
         "rainbow": "\u{1F308}",
         "ocean": "\u{1F30A}",
-        "wave": "\u{1F44B}",
+        "ocean_wave": "\u{1F30A}",
         "volcano": "\u{1F30B}",
         "earth_americas": "\u{1F30E}",
         "earth_africa": "\u{1F30D}",
