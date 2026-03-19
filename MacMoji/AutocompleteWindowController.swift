@@ -19,7 +19,8 @@ class AutocompleteWindowController {
     private var suggestions: [EmojiSuggestion] = []
     private var selectedIndex: Int = 0
     private var hostingView: NSHostingView<AutocompleteView>?
-    private var clickMonitor: Any?
+    private var globalClickMonitor: Any?
+    private var localClickMonitor: Any?
 
     private static let maxSuggestions = 8
     private static let allSorted: [(key: String, value: String)] = {
@@ -42,19 +43,30 @@ class AutocompleteWindowController {
     }
 
     private func setupClickMonitor() {
-        clickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
-            guard let self = self, let window = self.window, window.isVisible else { return }
-            // Hide the popup when clicking outside it, but don't cancel tracking
-            // so the popup reappears when the user types the next letter
-            let screenPoint = NSEvent.mouseLocation
-            if !window.frame.contains(screenPoint) {
-                self.hide()
+        // Global monitor catches clicks in other applications
+        globalClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
+            guard let self = self, self.window?.isVisible == true else { return }
+            self.hide()
+        }
+
+        // Local monitor catches clicks within our own app (including clicking away from the popup)
+        localClickMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
+            guard let self = self, let window = self.window, window.isVisible else { return event }
+            // If click is in the popup window, let it through (for button clicks)
+            if event.window == window {
+                return event
             }
+            // Click is outside the popup, dismiss it
+            self.hide()
+            return event
         }
     }
 
     deinit {
-        if let monitor = clickMonitor {
+        if let monitor = globalClickMonitor {
+            NSEvent.removeMonitor(monitor)
+        }
+        if let monitor = localClickMonitor {
             NSEvent.removeMonitor(monitor)
         }
     }
@@ -142,6 +154,11 @@ class AutocompleteWindowController {
         window = panel
     }
 
+    func setHoverIndex(_ index: Int) {
+        selectedIndex = index
+        updateView()
+    }
+
     private func updateView() {
         let view = AutocompleteView(
             suggestions: suggestions,
@@ -149,6 +166,9 @@ class AutocompleteWindowController {
             onSelect: { [weak self] suggestion in
                 KeyboardMonitor.shared.selectEmoji(suggestion.emoji, shortcode: suggestion.shortcode)
                 self?.hide()
+            },
+            onHover: { [weak self] index in
+                self?.setHoverIndex(index)
             }
         )
 
@@ -240,6 +260,7 @@ struct AutocompleteView: View {
     let suggestions: [EmojiSuggestion]
     let selectedIndex: Int
     let onSelect: (EmojiSuggestion) -> Void
+    let onHover: (Int) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -262,6 +283,11 @@ struct AutocompleteView: View {
                     )
                 }
                 .buttonStyle(.plain)
+                .onHover { hovering in
+                    if hovering {
+                        onHover(index)
+                    }
+                }
             }
         }
         .padding(6)
