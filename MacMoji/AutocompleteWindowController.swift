@@ -19,6 +19,7 @@ class AutocompleteWindowController {
     private var suggestions: [EmojiSuggestion] = []
     private var selectedIndex: Int = 0
     private var hostingView: NSHostingView<AutocompleteView>?
+    private var clickMonitor: Any?
 
     private static let maxSuggestions = 8
     private static let allSorted: [(key: String, value: String)] = {
@@ -36,7 +37,29 @@ class AutocompleteWindowController {
         return suggestions[selectedIndex]
     }
 
-    private init() {}
+    private init() {
+        setupClickMonitor()
+    }
+
+    private func setupClickMonitor() {
+        clickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
+            guard let self = self, let window = self.window, window.isVisible else { return }
+            // Hide the popup when clicking outside it, but don't cancel tracking
+            // so the popup reappears when the user types the next letter
+            let clickLocation = event.locationInWindow
+            let windowFrame = window.frame
+            let screenPoint = NSEvent.mouseLocation
+            if !windowFrame.contains(screenPoint) {
+                self.hide()
+            }
+        }
+    }
+
+    deinit {
+        if let monitor = clickMonitor {
+            NSEvent.removeMonitor(monitor)
+        }
+    }
 
     func updateSuggestions(for query: String) {
         guard !query.isEmpty else {
@@ -72,6 +95,12 @@ class AutocompleteWindowController {
         }
 
         show()
+    }
+
+    func showIfHasSuggestions() {
+        if !suggestions.isEmpty {
+            show()
+        }
     }
 
     func moveSelectionUp() {
