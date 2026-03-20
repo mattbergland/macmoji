@@ -22,7 +22,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let popup = AutocompleteWindowController.shared
 
         monitor.onBufferUpdate = { buffer in
-            popup.updateSuggestions(for: buffer)
+            // Require at least 2 characters after `:` before showing popup
+            // This prevents triggering on URLs, time formats, etc.
+            if buffer.count >= 2 {
+                popup.updateSuggestions(for: buffer)
+            } else {
+                popup.hide()
+            }
         }
 
         monitor.onTrackingCancelled = {
