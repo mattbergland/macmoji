@@ -162,8 +162,27 @@ class KeyboardMonitor {
         let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
         let flags = event.flags
 
-        // Ignore events with Command modifier (shortcuts like Cmd+C, Cmd+V)
+        // For Command modifier shortcuts: pass through but reset previousChar
+        // because Cmd+A (select all), Cmd+Left/Right (jump to start/end), Cmd+Z (undo)
+        // all change cursor position, making previousChar unreliable
         if flags.contains(.maskCommand) {
+            previousChar = ""
+            if isTracking {
+                cancelTracking()
+            }
+            return Unmanaged.passRetained(event)
+        }
+
+        // Handle cursor movement keys — after any cursor move, we can't know
+        // what character is before the cursor, so reset previousChar.
+        // Note: Up/Down arrows during tracking are handled below for popup navigation.
+        let cursorMovementKeys = [kVK_Home, kVK_End, kVK_PageUp, kVK_PageDown, kVK_ForwardDelete]
+        let arrowKeys = [kVK_LeftArrow, kVK_RightArrow]
+        if cursorMovementKeys.contains(Int(keyCode)) || (!isTracking && arrowKeys.contains(Int(keyCode))) {
+            previousChar = ""
+            if isTracking {
+                cancelTracking()
+            }
             return Unmanaged.passRetained(event)
         }
 
