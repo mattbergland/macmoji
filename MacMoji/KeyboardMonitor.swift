@@ -10,7 +10,9 @@ class KeyboardMonitor {
     private var isTracking: Bool = false
     private var savedClipboard: String?
     private var previousChar: String = ""  // Track last character to check if `:` is at word boundary
-    private var isReplacing: Bool = false  // Flag to ignore simulated events during text replacement
+    // Marker value to tag our simulated events so the event tap can skip them
+    // while still processing real user keystrokes during replacement
+    private static let simulatedEventMarker: Int64 = 0x4D4D4A49  // "MMJI"
     private var clickMonitor: Any?  // Global click monitor to reset state on any click
     private var tapCheckTimer: Timer?  // Periodic timer to re-enable event tap if macOS disabled it
     private var appActivationObserver: NSObjectProtocol?  // Observe app switches (Cmd+Tab, etc.)
@@ -152,8 +154,8 @@ class KeyboardMonitor {
             return Unmanaged.passRetained(event)
         }
 
-        // Skip processing our own simulated events (backspaces and paste during replacement)
-        if isReplacing {
+        // Skip our own simulated events (tagged with our marker) but process real user keystrokes
+        if event.getIntegerValueField(.eventSourceUserData) == KeyboardMonitor.simulatedEventMarker {
             return Unmanaged.passRetained(event)
         }
 
@@ -302,20 +304,20 @@ class KeyboardMonitor {
     }
 
     private func replaceText(deleteCount: Int, replacement: String) {
-        // Set flag so our event tap ignores simulated events
-        isReplacing = true
-
         let pasteboard = NSPasteboard.general
 
         // Save current clipboard content
         let savedString = pasteboard.string(forType: .string)
 
         // Simulate backspace keys to delete the shortcode
+        // Tag all simulated events with our marker so the event tap skips them
         let src = CGEventSource(stateID: .hidSystemState)
         for _ in 0..<deleteCount {
             let backDown = CGEvent(keyboardEventSource: src, virtualKey: UInt16(kVK_Delete), keyDown: true)
+            backDown?.setIntegerValueField(.eventSourceUserData, value: KeyboardMonitor.simulatedEventMarker)
             backDown?.post(tap: .cghidEventTap)
             let backUp = CGEvent(keyboardEventSource: src, virtualKey: UInt16(kVK_Delete), keyDown: false)
+            backUp?.setIntegerValueField(.eventSourceUserData, value: KeyboardMonitor.simulatedEventMarker)
             backUp?.post(tap: .cghidEventTap)
             usleep(5000) // 5ms between keystrokes
         }
@@ -330,14 +332,15 @@ class KeyboardMonitor {
         // Simulate Cmd+V to paste
         let vDown = CGEvent(keyboardEventSource: src, virtualKey: UInt16(kVK_ANSI_V), keyDown: true)
         vDown?.flags = .maskCommand
+        vDown?.setIntegerValueField(.eventSourceUserData, value: KeyboardMonitor.simulatedEventMarker)
         vDown?.post(tap: .cghidEventTap)
         let vUp = CGEvent(keyboardEventSource: src, virtualKey: UInt16(kVK_ANSI_V), keyDown: false)
         vUp?.flags = .maskCommand
+        vUp?.setIntegerValueField(.eventSourceUserData, value: KeyboardMonitor.simulatedEventMarker)
         vUp?.post(tap: .cghidEventTap)
 
-        // Clear replacing flag after paste is done
-        usleep(50000) // 50ms to let paste complete
-        isReplacing = false
+        // Wait for paste to complete
+        usleep(50000) // 50ms
 
         // Restore clipboard after a delay
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
