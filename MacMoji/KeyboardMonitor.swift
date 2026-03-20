@@ -13,6 +13,7 @@ class KeyboardMonitor {
     private var isReplacing: Bool = false  // Flag to ignore simulated events during text replacement
     private var clickMonitor: Any?  // Global click monitor to reset state on any click
     private var tapCheckTimer: Timer?  // Periodic timer to re-enable event tap if macOS disabled it
+    private var appActivationObserver: NSObjectProtocol?  // Observe app switches (Cmd+Tab, etc.)
 
     var onBufferUpdate: ((String) -> Void)?
     var onEmojiInserted: (() -> Void)?
@@ -67,6 +68,16 @@ class KeyboardMonitor {
                 print("MacMoji: Re-enabled event tap (was disabled by macOS)")
             }
         }
+
+        // Reset state when switching apps via Cmd+Tab or other non-click methods
+        appActivationObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.previousChar = ""  // New app = new typing context
+            self?.cancelTracking()
+        }
     }
 
     func stop() {
@@ -84,6 +95,10 @@ class KeyboardMonitor {
         }
         tapCheckTimer?.invalidate()
         tapCheckTimer = nil
+        if let observer = appActivationObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(observer)
+            appActivationObserver = nil
+        }
         cancelTracking()
     }
 
@@ -150,7 +165,29 @@ class KeyboardMonitor {
             return Unmanaged.passRetained(event)
         }
 
-        // Handle special keys when tracking is active
+        // Handle backspace globally (both tracking and non-tracking)
+        // Backspace means the character before the cursor is gone, so we can't know
+        // what's actually there now. Reset previousChar so `:` can trigger.
+        if Int(keyCode) == kVK_Delete {
+            if isTracking {
+                if !buffer.isEmpty {
+                    buffer.removeLast()
+                    if buffer.isEmpty {
+                        cancelTracking()
+                    } else {
+                        DispatchQueue.main.async {
+                            self.onBufferUpdate?(self.buffer)
+                        }
+                    }
+                } else {
+                    cancelTracking()
+                }
+            }
+            previousChar = ""  // After backspace, treat next `:` as word boundary
+            return Unmanaged.passRetained(event)
+        }
+
+        // Handle other special keys when tracking is active
         if isTracking {
             let popup = AutocompleteWindowController.shared
 
@@ -180,21 +217,6 @@ class KeyboardMonitor {
                 if popup.isVisible {
                     DispatchQueue.main.async { popup.moveSelectionDown() }
                     return nil
-                }
-                return Unmanaged.passRetained(event)
-
-            case kVK_Delete: // Backspace
-                if !buffer.isEmpty {
-                    buffer.removeLast()
-                    if buffer.isEmpty {
-                        cancelTracking()
-                    } else {
-                        DispatchQueue.main.async {
-                            self.onBufferUpdate?(self.buffer)
-                        }
-                    }
-                } else {
-                    cancelTracking()
                 }
                 return Unmanaged.passRetained(event)
 
