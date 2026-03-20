@@ -11,6 +11,8 @@ class KeyboardMonitor {
     private var savedClipboard: String?
     private var previousChar: String = ""  // Track last character to check if `:` is at word boundary
     private var isReplacing: Bool = false  // Flag to ignore simulated events during text replacement
+    private var clickMonitor: Any?  // Global click monitor to reset state on any click
+    private var tapCheckTimer: Timer?  // Periodic timer to re-enable event tap if macOS disabled it
 
     var onBufferUpdate: ((String) -> Void)?
     var onEmojiInserted: (() -> Void)?
@@ -50,6 +52,21 @@ class KeyboardMonitor {
         CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
         CGEvent.tapEnable(tap: tap, enable: true)
         print("MacMoji: Keyboard monitor started")
+
+        // Monitor all clicks to reset previousChar (handles app switching, clicking into new fields)
+        clickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
+            self?.previousChar = ""  // Any click = new typing context, treat next `:` as word boundary
+            self?.cancelTracking()
+        }
+
+        // Periodically check if the event tap is still enabled (macOS can disable it silently)
+        tapCheckTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
+            guard let self = self, let tap = self.eventTap else { return }
+            if !CGEvent.tapIsEnabled(tap: tap) {
+                CGEvent.tapEnable(tap: tap, enable: true)
+                print("MacMoji: Re-enabled event tap (was disabled by macOS)")
+            }
+        }
     }
 
     func stop() {
@@ -61,16 +78,20 @@ class KeyboardMonitor {
             eventTap = nil
             runLoopSource = nil
         }
+        if let monitor = clickMonitor {
+            NSEvent.removeMonitor(monitor)
+            clickMonitor = nil
+        }
+        tapCheckTimer?.invalidate()
+        tapCheckTimer = nil
         cancelTracking()
     }
 
     func cancelTracking() {
-        if isTracking {
-            isTracking = false
-            buffer = ""
-            DispatchQueue.main.async {
-                self.onTrackingCancelled?()
-            }
+        isTracking = false
+        buffer = ""
+        DispatchQueue.main.async {
+            self.onTrackingCancelled?()
         }
     }
 
