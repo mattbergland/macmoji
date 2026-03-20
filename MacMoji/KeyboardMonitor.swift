@@ -8,7 +8,6 @@ class KeyboardMonitor {
     private var runLoopSource: CFRunLoopSource?
     private var buffer: String = ""
     private var isTracking: Bool = false
-    private var peakBufferLength: Int = 0  // Max buffer length during this tracking session (never decrements on backspace)
     private var savedClipboard: String?
     private var previousChar: String = ""  // Track last character to check if `:` is at word boundary
     // Marker value to tag our simulated events so the event tap can skip them
@@ -116,10 +115,8 @@ class KeyboardMonitor {
     func selectEmoji(_ emoji: String, shortcode: String) {
         let deleteCount: Int
         if isTracking {
-            // Use peakBufferLength instead of buffer.count to handle apps like Chrome
-            // where backspace may clear autocomplete instead of deleting a character,
-            // leaving more text in the field than our buffer tracks.
-            deleteCount = peakBufferLength + 1 // +1 for opening `:`
+            // Delete the `:` + current buffer content
+            deleteCount = buffer.count + 1
         } else {
             deleteCount = 0
         }
@@ -281,7 +278,6 @@ class KeyboardMonitor {
                         // Not a valid shortcode — only re-start tracking if at word boundary
                         if isAtWordBoundary() {
                             buffer = ""
-                            peakBufferLength = 0
                             isTracking = true
                             DispatchQueue.main.async {
                                 self.onBufferUpdate?(self.buffer)
@@ -298,7 +294,6 @@ class KeyboardMonitor {
                     if isAtWordBoundary() {
                         isTracking = true
                         buffer = ""
-                        peakBufferLength = 0
                         DispatchQueue.main.async {
                             self.onBufferUpdate?(self.buffer)
                         }
@@ -311,7 +306,6 @@ class KeyboardMonitor {
                 let validChars = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "_"))
                 if char.unicodeScalars.allSatisfy({ validChars.contains($0) }) {
                     buffer += char.lowercased()
-                    peakBufferLength = max(peakBufferLength, buffer.count)
                     DispatchQueue.main.async {
                         self.onBufferUpdate?(self.buffer)
                     }
