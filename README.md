@@ -2,6 +2,8 @@
 
 Type Slack-style emoji shortcodes anywhere on your Mac and they instantly become real emojis. Works in iMessage, email, Slack, Notes, browsers -- everywhere you type.
 
+Made with Devin
+
 ---
 
 ## What It Does
