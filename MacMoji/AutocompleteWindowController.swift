@@ -245,15 +245,17 @@ class AutocompleteWindowController {
         // Fall back to mouse location if we couldn't get the cursor position
         let referencePoint = cursorPoint ?? NSEvent.mouseLocation
 
-        var x = referencePoint.x
-        var y = referencePoint.y - window.frame.height - 4
+        // Position popup directly below the text cursor, aligned to the left edge
+        var x = referencePoint.x - 10  // Slight left offset so popup aligns with text
+        var y = referencePoint.y - window.frame.height - 8  // Place below cursor with small gap
 
         // Keep on screen
         if x + window.frame.width > screenFrame.maxX {
             x = screenFrame.maxX - window.frame.width
         }
         if y < screenFrame.minY {
-            y = referencePoint.y + 20
+            // Not enough room below, show above the cursor instead
+            y = referencePoint.y + 24
         }
         if x < screenFrame.minX {
             x = screenFrame.minX
