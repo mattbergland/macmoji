@@ -204,7 +204,7 @@ class AutocompleteWindowController {
         let focusResult = AXUIElementCopyAttributeValue(systemElement, kAXFocusedUIElementAttribute as CFString, &focusedElement)
 
         if focusResult == .success, let focused = focusedElement {
-            let axElement = focused as! AXUIElement
+            let axElement = unsafeBitCast(focused, to: AXUIElement.self)
             // Get the selected text range
             var selectedRangeValue: AnyObject?
             let rangeResult = AXUIElementCopyAttributeValue(axElement, kAXSelectedTextRangeAttribute as CFString, &selectedRangeValue)
@@ -220,7 +220,7 @@ class AutocompleteWindowController {
                 )
 
                 if boundsResult == .success, let bounds = boundsValue {
-                    let axValue = bounds as! AXValue
+                    let axValue = unsafeBitCast(bounds, to: AXValue.self)
                     var rect = CGRect.zero
                     if AXValueGetValue(axValue, .cgRect, &rect) {
                         // Convert from screen coordinates (top-left origin) to Cocoa coordinates (bottom-left origin)
