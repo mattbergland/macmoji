@@ -16,6 +16,7 @@ class KeyboardMonitor {
     private var clickMonitor: Any?  // Global click monitor to reset state on any click
     private var tapCheckTimer: Timer?  // Periodic timer to re-enable event tap if macOS disabled it
     private var appActivationObserver: NSObjectProtocol?  // Observe app switches (Cmd+Tab, etc.)
+    private var syncWorkItem: DispatchWorkItem?  // Debounced accessibility sync to verify buffer
 
     var onBufferUpdate: ((String) -> Void)?
     var onEmojiInserted: (() -> Void)?
@@ -107,6 +108,7 @@ class KeyboardMonitor {
     func cancelTracking() {
         isTracking = false
         buffer = ""
+        syncWorkItem?.cancel()
         DispatchQueue.main.async {
             self.onTrackingCancelled?()
         }
@@ -139,6 +141,114 @@ class KeyboardMonitor {
         if previousChar.isEmpty { return true }  // Start of input
         let boundary = CharacterSet.whitespacesAndNewlines
         return previousChar.unicodeScalars.allSatisfy { boundary.contains($0) }
+    }
+
+    /// Check if the currently focused text field has selected text
+    /// (e.g., browser inline autocomplete selects the suggested completion).
+    /// When selected text exists, a backspace clears the selection instead of deleting a character.
+    private func hasSelectedText() -> Bool {
+        let systemElement = AXUIElementCreateSystemWide()
+        var focusedElement: AnyObject?
+        let result = AXUIElementCopyAttributeValue(
+            systemElement, kAXFocusedUIElementAttribute as CFString, &focusedElement
+        )
+        guard result == .success, let focused = focusedElement else { return false }
+        let axElement = unsafeBitCast(focused, to: AXUIElement.self)
+        var selectedTextObj: AnyObject?
+        let stResult = AXUIElementCopyAttributeValue(
+            axElement, kAXSelectedTextAttribute as CFString, &selectedTextObj
+        )
+        if stResult == .success, let selectedText = selectedTextObj as? String, !selectedText.isEmpty {
+            return true
+        }
+        return false
+    }
+
+    /// Schedule a debounced async verification of the buffer against the actual text field content.
+    /// This catches any desync between our keystroke-tracked buffer and reality (e.g., browser
+    /// autocomplete absorbing keystrokes, apps handling backspace differently, etc.).
+    private func scheduleSyncFromAccessibility() {
+        syncWorkItem?.cancel()
+        let workItem = DispatchWorkItem { [weak self] in
+            self?.syncBufferFromAccessibility()
+        }
+        syncWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05, execute: workItem)
+    }
+
+    /// Read the actual text field content via the Accessibility API and correct the buffer if needed.
+    private func syncBufferFromAccessibility() {
+        guard isTracking else { return }
+
+        let systemElement = AXUIElementCreateSystemWide()
+        var focusedElement: AnyObject?
+        let focusResult = AXUIElementCopyAttributeValue(
+            systemElement, kAXFocusedUIElementAttribute as CFString, &focusedElement
+        )
+        guard focusResult == .success, let focused = focusedElement else { return }
+        let axElement = unsafeBitCast(focused, to: AXUIElement.self)
+
+        // Get the text value of the focused element
+        var valueObj: AnyObject?
+        let valueResult = AXUIElementCopyAttributeValue(
+            axElement, kAXValueAttribute as CFString, &valueObj
+        )
+        guard valueResult == .success, let value = valueObj as? String, !value.isEmpty else { return }
+
+        // Get the cursor position (start of selected text range)
+        var rangeObj: AnyObject?
+        let rangeResult = AXUIElementCopyAttributeValue(
+            axElement, kAXSelectedTextRangeAttribute as CFString, &rangeObj
+        )
+        guard rangeResult == .success, let range = rangeObj else { return }
+        let axRange = unsafeBitCast(range, to: AXValue.self)
+        var cfRange = CFRange(location: 0, length: 0)
+        guard AXValueGetValue(axRange, .cfRange, &cfRange) else { return }
+
+        let cursorPos = cfRange.location
+        // Convert CFRange location (UTF-16 offset) to String index
+        let utf16View = value.utf16
+        guard cursorPos > 0, cursorPos <= utf16View.count else { return }
+        let utf16Index = utf16View.index(utf16View.startIndex, offsetBy: cursorPos)
+        guard let stringIndex = String.Index(utf16Index, within: value) else { return }
+
+        // Extract text before cursor
+        let textBeforeCursor = String(value[..<stringIndex])
+
+        // Find the last `:` that could be our trigger colon
+        guard let colonIndex = textBeforeCursor.lastIndex(of: ":") else {
+            cancelTracking()
+            return
+        }
+
+        let colonPosition = textBeforeCursor.distance(from: textBeforeCursor.startIndex, to: colonIndex)
+
+        // Verify the colon is at a word boundary
+        if colonPosition > 0 {
+            let charBefore = textBeforeCursor[textBeforeCursor.index(before: colonIndex)]
+            let boundary = CharacterSet.whitespacesAndNewlines
+            if !String(charBefore).unicodeScalars.allSatisfy({ boundary.contains($0) }) {
+                cancelTracking()
+                return
+            }
+        }
+
+        // Extract the actual buffer (text between `:` and cursor)
+        let afterColon = String(textBeforeCursor[textBeforeCursor.index(after: colonIndex)...])
+        let actualBuffer = afterColon.lowercased()
+
+        // Validate that it only contains valid shortcode characters
+        let validChars = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "_"))
+        if !actualBuffer.isEmpty && !actualBuffer.unicodeScalars.allSatisfy({ validChars.contains($0) }) {
+            cancelTracking()
+            return
+        }
+
+        // If the actual buffer differs from our tracked buffer, correct it
+        if actualBuffer != buffer {
+            buffer = actualBuffer
+            onBufferUpdate?(buffer)
+        }
     }
 
     private func handleEvent(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
@@ -191,7 +301,12 @@ class KeyboardMonitor {
         // what's actually there now. Reset previousChar so `:` can trigger.
         if Int(keyCode) == kVK_Delete {
             if isTracking {
-                if !buffer.isEmpty {
+                // Check if the text field has selected text (e.g., browser inline autocomplete).
+                // If so, this backspace will clear the selection rather than deleting a
+                // character from our buffer, so we should NOT remove from the buffer.
+                let selectionActive = hasSelectedText()
+
+                if !selectionActive && !buffer.isEmpty {
                     buffer.removeLast()
                     if buffer.isEmpty {
                         cancelTracking()
@@ -200,8 +315,15 @@ class KeyboardMonitor {
                             self.onBufferUpdate?(self.buffer)
                         }
                     }
-                } else {
+                } else if !selectionActive {
+                    // No selection and buffer is empty — user is deleting the `:` itself
                     cancelTracking()
+                }
+                // When selectionActive is true, keep buffer as-is (backspace only clears selection)
+
+                // Always schedule an async sync to verify the buffer matches reality
+                if isTracking {
+                    scheduleSyncFromAccessibility()
                 }
             }
             previousChar = ""  // After backspace, treat next `:` as word boundary
