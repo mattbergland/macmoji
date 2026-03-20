@@ -90,7 +90,6 @@ class KeyboardMonitor {
     func cancelTracking() {
         isTracking = false
         buffer = ""
-        previousChar = ""  // Reset so next `:` always triggers at a word boundary
         DispatchQueue.main.async {
             self.onTrackingCancelled?()
         }
