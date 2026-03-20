@@ -9,6 +9,7 @@ class KeyboardMonitor {
     private var buffer: String = ""
     private var isTracking: Bool = false
     private var savedClipboard: String?
+    private var previousChar: String = ""  // Track last character to check if `:` is at word boundary
 
     var onBufferUpdate: ((String) -> Void)?
     var onEmojiInserted: (() -> Void)?
@@ -94,6 +95,13 @@ class KeyboardMonitor {
         }
     }
 
+    /// Returns true if the colon is at a word boundary (start of input, after space/newline/tab)
+    private func isAtWordBoundary() -> Bool {
+        if previousChar.isEmpty { return true }  // Start of input
+        let boundary = CharacterSet.whitespacesAndNewlines
+        return previousChar.unicodeScalars.allSatisfy { boundary.contains($0) }
+    }
+
     private func handleEvent(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
         // Re-enable tap if it gets disabled (macOS can disable taps that take too long)
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
@@ -127,9 +135,11 @@ class KeyboardMonitor {
             case kVK_Return, kVK_Tab:
                 if popup.isVisible, let selected = popup.selectedEmoji {
                     selectEmoji(selected.emoji, shortcode: selected.shortcode)
+                    previousChar = ""  // Reset after emoji insertion
                     return nil // Consume the event
                 }
                 cancelTracking()
+                previousChar = " "  // Treat return/tab as whitespace for boundary detection
                 return Unmanaged.passRetained(event)
 
             case kVK_UpArrow:
@@ -163,6 +173,7 @@ class KeyboardMonitor {
 
             case kVK_Space:
                 cancelTracking()
+                previousChar = " "  // Space is a word boundary
                 return Unmanaged.passRetained(event)
 
             default:
@@ -190,23 +201,33 @@ class KeyboardMonitor {
                         DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + 0.05) {
                             self.replaceText(deleteCount: deleteCount + 1, replacement: emoji) // +1 for closing `:`
                         }
+                        previousChar = char
                         return Unmanaged.passRetained(event)
                     } else {
-                        // Not a valid shortcode, start fresh tracking from this `:`
-                        buffer = ""
-                        isTracking = true
-                        DispatchQueue.main.async {
-                            self.onBufferUpdate?(self.buffer)
+                        // Not a valid shortcode — only re-start tracking if at word boundary
+                        if isAtWordBoundary() {
+                            buffer = ""
+                            isTracking = true
+                            DispatchQueue.main.async {
+                                self.onBufferUpdate?(self.buffer)
+                            }
+                        } else {
+                            cancelTracking()
                         }
+                        previousChar = char
                         return Unmanaged.passRetained(event)
                     }
                 } else {
-                    // Start tracking
-                    isTracking = true
-                    buffer = ""
-                    DispatchQueue.main.async {
-                        self.onBufferUpdate?(self.buffer)
+                    // Only start tracking if `:` is at a word boundary
+                    // (after space, newline, tab, or at the very start of input)
+                    if isAtWordBoundary() {
+                        isTracking = true
+                        buffer = ""
+                        DispatchQueue.main.async {
+                            self.onBufferUpdate?(self.buffer)
+                        }
                     }
+                    previousChar = char
                     return Unmanaged.passRetained(event)
                 }
             } else if isTracking {
@@ -221,6 +242,10 @@ class KeyboardMonitor {
                     // Invalid character for shortcode, cancel tracking
                     cancelTracking()
                 }
+                previousChar = char
+            } else {
+                // Not tracking, just update previousChar
+                previousChar = char
             }
         }
 
