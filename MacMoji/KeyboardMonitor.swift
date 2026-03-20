@@ -10,9 +10,12 @@ class KeyboardMonitor {
     private var isTracking: Bool = false
     private var savedClipboard: String?
     private var previousChar: String = ""  // Track last character to check if `:` is at word boundary
-    private var isReplacing: Bool = false  // Flag to ignore simulated events during text replacement
+    // Marker value to tag our simulated events so the event tap can skip them
+    // while still processing real user keystrokes during replacement
+    private static let simulatedEventMarker: Int64 = 0x4D4D4A49  // "MMJI"
     private var clickMonitor: Any?  // Global click monitor to reset state on any click
     private var tapCheckTimer: Timer?  // Periodic timer to re-enable event tap if macOS disabled it
+    private var appActivationObserver: NSObjectProtocol?  // Observe app switches (Cmd+Tab, etc.)
 
     var onBufferUpdate: ((String) -> Void)?
     var onEmojiInserted: (() -> Void)?
@@ -67,6 +70,16 @@ class KeyboardMonitor {
                 print("MacMoji: Re-enabled event tap (was disabled by macOS)")
             }
         }
+
+        // Reset state when switching apps via Cmd+Tab or other non-click methods
+        appActivationObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.previousChar = ""  // New app = new typing context
+            self?.cancelTracking()
+        }
     }
 
     func stop() {
@@ -84,6 +97,10 @@ class KeyboardMonitor {
         }
         tapCheckTimer?.invalidate()
         tapCheckTimer = nil
+        if let observer = appActivationObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(observer)
+            appActivationObserver = nil
+        }
         cancelTracking()
     }
 
@@ -137,20 +154,61 @@ class KeyboardMonitor {
             return Unmanaged.passRetained(event)
         }
 
-        // Skip processing our own simulated events (backspaces and paste during replacement)
-        if isReplacing {
+        // Skip our own simulated events (tagged with our marker) but process real user keystrokes
+        if event.getIntegerValueField(.eventSourceUserData) == KeyboardMonitor.simulatedEventMarker {
             return Unmanaged.passRetained(event)
         }
 
         let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
         let flags = event.flags
 
-        // Ignore events with Command modifier (shortcuts like Cmd+C, Cmd+V)
+        // For Command modifier shortcuts: pass through but reset previousChar
+        // because Cmd+A (select all), Cmd+Left/Right (jump to start/end), Cmd+Z (undo)
+        // all change cursor position, making previousChar unreliable
         if flags.contains(.maskCommand) {
+            previousChar = ""
+            if isTracking {
+                cancelTracking()
+            }
             return Unmanaged.passRetained(event)
         }
 
-        // Handle special keys when tracking is active
+        // Handle cursor movement keys — after any cursor move, we can't know
+        // what character is before the cursor, so reset previousChar.
+        // Note: Up/Down arrows during tracking are handled below for popup navigation.
+        let cursorMovementKeys = [kVK_Home, kVK_End, kVK_PageUp, kVK_PageDown, kVK_ForwardDelete]
+        let arrowKeys = [kVK_LeftArrow, kVK_RightArrow]
+        if cursorMovementKeys.contains(Int(keyCode)) || (!isTracking && arrowKeys.contains(Int(keyCode))) {
+            previousChar = ""
+            if isTracking {
+                cancelTracking()
+            }
+            return Unmanaged.passRetained(event)
+        }
+
+        // Handle backspace globally (both tracking and non-tracking)
+        // Backspace means the character before the cursor is gone, so we can't know
+        // what's actually there now. Reset previousChar so `:` can trigger.
+        if Int(keyCode) == kVK_Delete {
+            if isTracking {
+                if !buffer.isEmpty {
+                    buffer.removeLast()
+                    if buffer.isEmpty {
+                        cancelTracking()
+                    } else {
+                        DispatchQueue.main.async {
+                            self.onBufferUpdate?(self.buffer)
+                        }
+                    }
+                } else {
+                    cancelTracking()
+                }
+            }
+            previousChar = ""  // After backspace, treat next `:` as word boundary
+            return Unmanaged.passRetained(event)
+        }
+
+        // Handle other special keys when tracking is active
         if isTracking {
             let popup = AutocompleteWindowController.shared
 
@@ -180,21 +238,6 @@ class KeyboardMonitor {
                 if popup.isVisible {
                     DispatchQueue.main.async { popup.moveSelectionDown() }
                     return nil
-                }
-                return Unmanaged.passRetained(event)
-
-            case kVK_Delete: // Backspace
-                if !buffer.isEmpty {
-                    buffer.removeLast()
-                    if buffer.isEmpty {
-                        cancelTracking()
-                    } else {
-                        DispatchQueue.main.async {
-                            self.onBufferUpdate?(self.buffer)
-                        }
-                    }
-                } else {
-                    cancelTracking()
                 }
                 return Unmanaged.passRetained(event)
 
@@ -280,20 +323,20 @@ class KeyboardMonitor {
     }
 
     private func replaceText(deleteCount: Int, replacement: String) {
-        // Set flag so our event tap ignores simulated events
-        isReplacing = true
-
         let pasteboard = NSPasteboard.general
 
         // Save current clipboard content
         let savedString = pasteboard.string(forType: .string)
 
         // Simulate backspace keys to delete the shortcode
+        // Tag all simulated events with our marker so the event tap skips them
         let src = CGEventSource(stateID: .hidSystemState)
         for _ in 0..<deleteCount {
             let backDown = CGEvent(keyboardEventSource: src, virtualKey: UInt16(kVK_Delete), keyDown: true)
+            backDown?.setIntegerValueField(.eventSourceUserData, value: KeyboardMonitor.simulatedEventMarker)
             backDown?.post(tap: .cghidEventTap)
             let backUp = CGEvent(keyboardEventSource: src, virtualKey: UInt16(kVK_Delete), keyDown: false)
+            backUp?.setIntegerValueField(.eventSourceUserData, value: KeyboardMonitor.simulatedEventMarker)
             backUp?.post(tap: .cghidEventTap)
             usleep(5000) // 5ms between keystrokes
         }
@@ -308,14 +351,15 @@ class KeyboardMonitor {
         // Simulate Cmd+V to paste
         let vDown = CGEvent(keyboardEventSource: src, virtualKey: UInt16(kVK_ANSI_V), keyDown: true)
         vDown?.flags = .maskCommand
+        vDown?.setIntegerValueField(.eventSourceUserData, value: KeyboardMonitor.simulatedEventMarker)
         vDown?.post(tap: .cghidEventTap)
         let vUp = CGEvent(keyboardEventSource: src, virtualKey: UInt16(kVK_ANSI_V), keyDown: false)
         vUp?.flags = .maskCommand
+        vUp?.setIntegerValueField(.eventSourceUserData, value: KeyboardMonitor.simulatedEventMarker)
         vUp?.post(tap: .cghidEventTap)
 
-        // Clear replacing flag after paste is done
-        usleep(50000) // 50ms to let paste complete
-        isReplacing = false
+        // Wait for paste to complete
+        usleep(50000) // 50ms
 
         // Restore clipboard after a delay
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
