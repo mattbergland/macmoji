@@ -110,13 +110,13 @@ class AutocompleteWindowController {
     func moveSelectionUp() {
         guard !suggestions.isEmpty else { return }
         selectedIndex = max(0, selectedIndex - 1)
-        updateView()
+        updateViewContent()
     }
 
     func moveSelectionDown() {
         guard !suggestions.isEmpty else { return }
         selectedIndex = min(suggestions.count - 1, selectedIndex + 1)
-        updateView()
+        updateViewContent()
     }
 
     func hide() {
@@ -156,10 +156,15 @@ class AutocompleteWindowController {
 
     func setHoverIndex(_ index: Int) {
         selectedIndex = index
-        updateView()
+        updateViewContent()
     }
 
     private func updateView() {
+        updateViewContent()
+        resizeWindow()
+    }
+
+    private func updateViewContent() {
         let view = AutocompleteView(
             suggestions: suggestions,
             selectedIndex: selectedIndex,
@@ -179,8 +184,9 @@ class AutocompleteWindowController {
             hostingView = hosting
             window?.contentView = hosting
         }
+    }
 
-        // Resize window to fit content
+    private func resizeWindow() {
         let itemHeight: CGFloat = 36
         let padding: CGFloat = 8
         let height = CGFloat(suggestions.count) * itemHeight + padding * 2
@@ -203,13 +209,14 @@ class AutocompleteWindowController {
         var focusedElement: AnyObject?
         let focusResult = AXUIElementCopyAttributeValue(systemElement, kAXFocusedUIElementAttribute as CFString, &focusedElement)
 
-        if focusResult == .success, let focused = focusedElement, let axElement = focused as? AXUIElement {
-            // Get the selected text range
+        if focusResult == .success, let focused = focusedElement {
+            let axElement = unsafeBitCast(focused, to: AXUIElement.self)
+
+            // Method 1: Try to get cursor position from selected text range bounds
             var selectedRangeValue: AnyObject?
             let rangeResult = AXUIElementCopyAttributeValue(axElement, kAXSelectedTextRangeAttribute as CFString, &selectedRangeValue)
 
             if rangeResult == .success, let rangeValue = selectedRangeValue {
-                // Get the bounds for the selected text range (this gives us the cursor position)
                 var boundsValue: AnyObject?
                 let boundsResult = AXUIElementCopyParameterizedAttributeValue(
                     axElement,
@@ -218,11 +225,10 @@ class AutocompleteWindowController {
                     &boundsValue
                 )
 
-                if boundsResult == .success, let bounds = boundsValue,
-                   let axValue = bounds as? AXValue {
+                if boundsResult == .success, let bounds = boundsValue {
+                    let axValue = unsafeBitCast(bounds, to: AXValue.self)
                     var rect = CGRect.zero
                     if AXValueGetValue(axValue, .cgRect, &rect) {
-                        // Convert from screen coordinates (top-left origin) to Cocoa coordinates (bottom-left origin)
                         if let screen = NSScreen.main {
                             let screenHeight = screen.frame.height
                             cursorPoint = NSPoint(
@@ -233,9 +239,35 @@ class AutocompleteWindowController {
                     }
                 }
             }
+
+            // Method 2: If cursor position not found, try to get the focused element's position
+            if cursorPoint == nil {
+                var posValue: AnyObject?
+                var sizeValue: AnyObject?
+                let posResult = AXUIElementCopyAttributeValue(axElement, kAXPositionAttribute as CFString, &posValue)
+                let sizeResult = AXUIElementCopyAttributeValue(axElement, kAXSizeAttribute as CFString, &sizeValue)
+
+                if posResult == .success, let pos = posValue, sizeResult == .success, let size = sizeValue {
+                    let axPos = unsafeBitCast(pos, to: AXValue.self)
+                    let axSize = unsafeBitCast(size, to: AXValue.self)
+                    var position = CGPoint.zero
+                    var elementSize = CGSize.zero
+                    if AXValueGetValue(axPos, .cgPoint, &position),
+                       AXValueGetValue(axSize, .cgSize, &elementSize) {
+                        if let screen = NSScreen.main {
+                            let screenHeight = screen.frame.height
+                            // Position below the focused element, near its left edge
+                            cursorPoint = NSPoint(
+                                x: position.x,
+                                y: screenHeight - position.y - elementSize.height
+                            )
+                        }
+                    }
+                }
+            }
         }
 
-        // Fall back to mouse location if we couldn't get the cursor position
+        // Fall back to mouse location if we couldn't get any position
         let referencePoint = cursorPoint ?? NSEvent.mouseLocation
 
         var x = referencePoint.x
