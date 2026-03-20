@@ -329,30 +329,28 @@ class KeyboardMonitor {
         // Save current clipboard content
         let savedString = pasteboard.string(forType: .string)
 
-        // Use Shift+Left arrow to select the shortcode text, then paste over it.
-        // This is more reliable than backspaces because apps like Chrome's URL bar
-        // can absorb the first backspace to clear autocomplete suggestions.
+        // Use backspace keys to delete the shortcode text, then paste the emoji.
+        // Backspaces work reliably across all apps including web browser text fields.
+        // (Shift+Left selection was tried but doesn't work in web contentEditable/textarea.)
         let src = CGEventSource(stateID: .hidSystemState)
         for _ in 0..<deleteCount {
-            let shiftLeftDown = CGEvent(keyboardEventSource: src, virtualKey: UInt16(kVK_LeftArrow), keyDown: true)
-            shiftLeftDown?.flags = .maskShift
-            shiftLeftDown?.setIntegerValueField(.eventSourceUserData, value: KeyboardMonitor.simulatedEventMarker)
-            shiftLeftDown?.post(tap: .cghidEventTap)
-            let shiftLeftUp = CGEvent(keyboardEventSource: src, virtualKey: UInt16(kVK_LeftArrow), keyDown: false)
-            shiftLeftUp?.flags = .maskShift
-            shiftLeftUp?.setIntegerValueField(.eventSourceUserData, value: KeyboardMonitor.simulatedEventMarker)
-            shiftLeftUp?.post(tap: .cghidEventTap)
+            let backDown = CGEvent(keyboardEventSource: src, virtualKey: UInt16(kVK_Delete), keyDown: true)
+            backDown?.setIntegerValueField(.eventSourceUserData, value: KeyboardMonitor.simulatedEventMarker)
+            backDown?.post(tap: .cghidEventTap)
+            let backUp = CGEvent(keyboardEventSource: src, virtualKey: UInt16(kVK_Delete), keyDown: false)
+            backUp?.setIntegerValueField(.eventSourceUserData, value: KeyboardMonitor.simulatedEventMarker)
+            backUp?.post(tap: .cghidEventTap)
             usleep(5000) // 5ms between keystrokes
         }
 
-        // Small delay to let selection process
+        // Small delay to let backspaces process
         usleep(30000) // 30ms
 
         // Put emoji on clipboard
         pasteboard.clearContents()
         pasteboard.setString(replacement, forType: .string)
 
-        // Simulate Cmd+V to paste (replaces the selection with the emoji)
+        // Simulate Cmd+V to paste the emoji
         let vDown = CGEvent(keyboardEventSource: src, virtualKey: UInt16(kVK_ANSI_V), keyDown: true)
         vDown?.flags = .maskCommand
         vDown?.setIntegerValueField(.eventSourceUserData, value: KeyboardMonitor.simulatedEventMarker)
