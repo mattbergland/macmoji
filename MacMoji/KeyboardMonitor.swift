@@ -10,6 +10,7 @@ class KeyboardMonitor {
     private var isTracking: Bool = false
     private var savedClipboard: String?
     private var previousChar: String = ""  // Track last character to check if `:` is at word boundary
+    private var isReplacing: Bool = false  // Flag to ignore simulated events during text replacement
 
     var onBufferUpdate: ((String) -> Void)?
     var onEmojiInserted: (() -> Void)?
@@ -115,6 +116,11 @@ class KeyboardMonitor {
             return Unmanaged.passRetained(event)
         }
 
+        // Skip processing our own simulated events (backspaces and paste during replacement)
+        if isReplacing {
+            return Unmanaged.passRetained(event)
+        }
+
         let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
         let flags = event.flags
 
@@ -201,7 +207,7 @@ class KeyboardMonitor {
                         DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + 0.05) {
                             self.replaceText(deleteCount: deleteCount + 1, replacement: emoji) // +1 for closing `:`
                         }
-                        previousChar = char
+                        previousChar = ""  // Reset so next `:` triggers properly
                         return Unmanaged.passRetained(event)
                     } else {
                         // Not a valid shortcode — only re-start tracking if at word boundary
@@ -253,6 +259,9 @@ class KeyboardMonitor {
     }
 
     private func replaceText(deleteCount: Int, replacement: String) {
+        // Set flag so our event tap ignores simulated events
+        isReplacing = true
+
         let pasteboard = NSPasteboard.general
 
         // Save current clipboard content
@@ -282,6 +291,10 @@ class KeyboardMonitor {
         let vUp = CGEvent(keyboardEventSource: src, virtualKey: UInt16(kVK_ANSI_V), keyDown: false)
         vUp?.flags = .maskCommand
         vUp?.post(tap: .cghidEventTap)
+
+        // Clear replacing flag after paste is done
+        usleep(50000) // 50ms to let paste complete
+        isReplacing = false
 
         // Restore clipboard after a delay
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
