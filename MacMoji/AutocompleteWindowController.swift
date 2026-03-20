@@ -110,13 +110,13 @@ class AutocompleteWindowController {
     func moveSelectionUp() {
         guard !suggestions.isEmpty else { return }
         selectedIndex = max(0, selectedIndex - 1)
-        updateView()
+        updateViewContent()
     }
 
     func moveSelectionDown() {
         guard !suggestions.isEmpty else { return }
         selectedIndex = min(suggestions.count - 1, selectedIndex + 1)
-        updateView()
+        updateViewContent()
     }
 
     func hide() {
@@ -156,10 +156,15 @@ class AutocompleteWindowController {
 
     func setHoverIndex(_ index: Int) {
         selectedIndex = index
-        updateView()
+        updateViewContent()
     }
 
     private func updateView() {
+        updateViewContent()
+        resizeWindow()
+    }
+
+    private func updateViewContent() {
         let view = AutocompleteView(
             suggestions: suggestions,
             selectedIndex: selectedIndex,
@@ -179,8 +184,9 @@ class AutocompleteWindowController {
             hostingView = hosting
             window?.contentView = hosting
         }
+    }
 
-        // Resize window to fit content
+    private func resizeWindow() {
         let itemHeight: CGFloat = 36
         let padding: CGFloat = 8
         let height = CGFloat(suggestions.count) * itemHeight + padding * 2
