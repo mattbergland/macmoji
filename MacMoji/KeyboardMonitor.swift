@@ -261,18 +261,19 @@ class KeyboardMonitor {
                     let shortcode = buffer.lowercased()
                     if let emoji = EmojiDatabase.all[shortcode] {
                         // Valid shortcode! Replace :shortcode: with emoji
+                        // Consume the closing `:` (don't let it type into the field)
+                        // Only need to delete the opening `:` + buffer content
                         let deleteCount = buffer.count + 1 // +1 for opening `:`
                         isTracking = false
                         buffer = ""
                         DispatchQueue.main.async {
                             self.onTrackingCancelled?()
                         }
-                        // Let the closing `:` pass through, then delete everything and insert emoji
                         DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + 0.05) {
-                            self.replaceText(deleteCount: deleteCount + 1, replacement: emoji) // +1 for closing `:`
+                            self.replaceText(deleteCount: deleteCount, replacement: emoji)
                         }
                         previousChar = ""  // Reset so next `:` triggers properly
-                        return Unmanaged.passRetained(event)
+                        return nil // Consume the closing colon — prevents leftover `:` in apps like Chrome
                     } else {
                         // Not a valid shortcode — only re-start tracking if at word boundary
                         if isAtWordBoundary() {
