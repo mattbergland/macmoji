@@ -47,6 +47,7 @@ class AutocompleteWindowController {
         globalClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
             guard let self = self, self.window?.isVisible == true else { return }
             self.hide()
+            KeyboardMonitor.shared.cancelTracking()
         }
 
         // Local monitor catches clicks within our own app (including clicking away from the popup)
@@ -58,6 +59,7 @@ class AutocompleteWindowController {
             }
             // Click is outside the popup, dismiss it
             self.hide()
+            KeyboardMonitor.shared.cancelTracking()
             return event
         }
     }
