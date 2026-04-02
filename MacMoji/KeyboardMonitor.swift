@@ -141,6 +141,24 @@ class KeyboardMonitor {
         return previousChar.unicodeScalars.allSatisfy { boundary.contains($0) }
     }
 
+    private func isSlackFrontmost() -> Bool {
+        guard let frontmost = NSWorkspace.shared.frontmostApplication else { return false }
+
+        if let bundleID = frontmost.bundleIdentifier {
+            switch bundleID {
+            case "com.tinyspeck.slackmacgap",
+                 "com.tinyspeck.slackmacgap.beta",
+                 "com.slack.slack":
+                return true
+            default:
+                break
+            }
+        }
+
+        let appName = frontmost.localizedName?.lowercased()
+        return appName == "slack" || appName == "slack beta"
+    }
+
     private func handleEvent(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
         // Re-enable tap if it gets disabled (macOS can disable taps that take too long)
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
@@ -151,6 +169,16 @@ class KeyboardMonitor {
         }
 
         guard type == .keyDown else {
+            return Unmanaged.passRetained(event)
+        }
+
+        // Slack has its own rich text composer and emoji handling. Our simulated
+        // delete/paste replacement can disturb its input state, so leave Slack alone.
+        if isSlackFrontmost() {
+            if isTracking {
+                cancelTracking()
+            }
+            previousChar = ""
             return Unmanaged.passRetained(event)
         }
 
