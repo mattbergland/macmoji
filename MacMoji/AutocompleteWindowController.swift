@@ -230,7 +230,9 @@ class AutocompleteWindowController {
                 if boundsResult == .success, let bounds = boundsValue {
                     let axValue = unsafeBitCast(bounds, to: AXValue.self)
                     var rect = CGRect.zero
-                    if AXValueGetValue(axValue, .cgRect, &rect) {
+                    // A collapsed caret has zero width but nonzero height; some apps
+                    // (e.g. Chrome's omnibox) report success with an all-zero rect
+                    if AXValueGetValue(axValue, .cgRect, &rect), rect.height > 0 {
                         if let screen = NSScreen.main {
                             let screenHeight = screen.frame.height
                             cursorPoint = NSPoint(
